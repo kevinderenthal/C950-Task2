@@ -61,7 +61,6 @@ class truck:
         else:
             # Calculate priority based on the distance from the hub address
             priority = abs(self.hubAddress.zip - pck.deliveryAddress.zip) + 1
-        print("Priority of package ", pck.id, " is ", (int(priority)))
         return (int(priority))
 
     # ** insert package function **
@@ -79,11 +78,11 @@ class truck:
             return -1
 
     # ** check package on truck function **
-    # returns whether or not the package passed in parameters is inside of the trucks priority queue
-    def checkPackagesOnTruck(self, package):
-        # iterates the priority queue and checks whether any packages match the id of the package passed to the function
+    # returns whether or not the package with the given id is inside of the truck's priority queue
+    def checkPackagesOnTruck(self, package_id):
+        # iterates the priority queue and checks whether any packages match the id passed to the function
         for p in self.packageList: # type: ignore
-            if p[1].id == package.id:
+            if p[1].id == package_id:
                 return True
         return False
 
@@ -91,16 +90,13 @@ class truck:
     # returns whether or not the truck is full
     def isFull(self):
         # compares the total number of packages in the priority queue to the maximum allowed packages checking if the queue is full
-        if len(self.packageList) < self.maxPackages:
-            return False
-        return True
+        return self.packageCount() >= self.maxPackages
 
     # ** is empty function **
     # returns whether or not the truck is empty
     def isEmpty(self):
-        for pck in self.packageList:
-            return False
-        return True
+        if self.packageCount() == 0:
+            return True
 
     # ** remove package function **
     # removes the package passed in parameters from the priority queue
@@ -110,7 +106,7 @@ class truck:
     # ** hasPackages function **
     # returns true if packages are on the truck and false otherwise
     def hasPackages(self):
-        if len(self.packageList) > 0:
+        if self.packageCount() > 0:
             return True
         else:
             return False
@@ -206,20 +202,22 @@ class truck:
             self.startTime = None 
             self.endTime = None
             self.locked = True
+            self.stopDeliverFlag = True
         elif self.status == 2:
             # Wait for current delivery to complete
-            while timeKeeper.dt.hour <= self.endTime.hour and timeKeeper.dt.minute <= self.endTime.minute:
+            print("truck number ", self.truckNum, "is waiting to finish delivery")
+            self.stopDeliverFlag = True
+            while self.locked == True:
                 pass
             self.status = 0
             self.startTime = None
             self.endTime = None
             self.locked = True
-            self.stopDeliverFlag = False
 
     def deliverPackage(self):
         while True:
             # if the truck isn't locked because it was stopped delivery or currently delivering
-            if self.locked == False and self.status == 2:
+            if self.stopDeliverFlag == False and self.locked == False and self.status == 2:
                 self.locked = True
                 # record the start time of the delivery
                 self.startTime = timeKeeper.dt
@@ -252,13 +250,17 @@ class truck:
                         self.currAddress = self.packageToBeDelivered.deliveryAddress
                         self.packageToBeDelivered.currentAddress = self.packageToBeDelivered.deliveryAddress
                         print("done")
+                        self.printPackageList()
                         self.locked = False
-                        if(self.isEmpty()):
-                            print("Truck ", self.truckNum, "is empty")
-                            self.status = 0
+                if(self.isEmpty()):
+                    print("Truck ", self.truckNum, "is empty")
+                    self.status = 0
+                    return
 
-    def pickupPackage(self, package):
-        if not self.locked:
+
+    def pickupPackage(self, package, listOfDelayedPackages, table):
+        if not self.locked or self.stopDeliverFlag == True:
+            print("truck number ", self.truckNum, " is picking up package ", package.id)
             self.locked = True
             self.startTime = timeKeeper.dt
             timeToPickup = self.calculateTimeFromTo(self.currAddress, package.deliveryAddress)
@@ -271,26 +273,41 @@ class truck:
             minutes %= 60
             hours = (hours + self.startTime.hour + hr) % 24
             self.endTime = datetime(self.startTime.year, self.startTime.month, self.startTime.day, hours, minutes, 0)
+            print("travelling from ", self.currAddress.address, " to ", package.deliveryAddress.address)
+            print("start time is ", self.startTime)
+            print("end time is ", self.endTime, "\n")
             while timeKeeper.dt < self.endTime:
                 pass
             self.currAddress = self.hubAddress
             self.insertPackage(package)
+            listOfDelayedPackages.remove(package.id)
             # Check for more packages at the hub with status 0 and insert them if the truck is not full
-            for pck in package.delayedPackages:
-                if pck.status == 0 and not self.isFull():
-                    self.insertPackage(pck)
+            for pck in list(listOfDelayedPackages):
+                if not self.isFull():
+                    package_to_insert = table.getPackage(pck)
+                    self.insertPackage(package_to_insert)
+                    if self.checkPackagesOnTruck(package_to_insert.id):
+                        listOfDelayedPackages.remove(pck)
+                else:
+                    print("Truck ", self.truckNum, " is full")
+            self.stopDeliverFlag = False
             self.locked = False
+
+    def packageCount(self):
+        countPack = 0
+        # iterates the priority queue adding the package id's to the output string and counting the number of packages
+        for pck in self.packageList:
+            countPack = countPack + 1
+        return countPack
 
     # ** print package list **
     # ** prints the ids of all packages in the priority queue for the truck
     def printPackageList(self):
         printTotal = ""
-        countPack = 0
+        countPack = self.packageCount()
         # iterates the priority queue adding the package id's to the output string and counting the number of packages
         for pck in self.packageList:
-            if pck[1].status == 1:
-                printTotal = printTotal + str(pck[1].id) + " "
-                countPack = countPack + 1
+            printTotal = printTotal + str(pck[1].id) + " "
         # prints the number of packages then prints the output string
         print("Total packages on truck " + str(self.truckNum) + ": ", countPack)
         print(printTotal)

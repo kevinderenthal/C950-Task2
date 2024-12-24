@@ -4,7 +4,9 @@ from hashTable import hashTable # type: ignore
 from truck import truck # type: ignore
 from address import address # type: ignore
 from timeKeeper import timeKeeper #type:ignore
+from programStatus import programStatus #type:ignore
 import csv, string, re, datetime, threading
+
 
 PYTHONHASHSEED = 1
 
@@ -18,7 +20,6 @@ listOfNewAddresses = {(9, address("410 S. State St.", "Salt Lake City", 84111))}
 listOfDelayedPackages = []
 listOfWrongAddressPackages = []
 truckOrder = []
-trucksHavePackages = True
 switchFlag = False
 listOfDeliveryThreads = []
 
@@ -89,16 +90,16 @@ def checkSpecialNotes():
         #check for any packages that need to be on a certain truck 
         if(pck!=None):
             isDone = False
-            temp = pck
+            temp = pck 
             while(isDone==False):
-                if ("only be on truck" in temp.notes):
+                if ("Can only be on truck" in temp.notes):
                         truckNum = ''.join(re.findall(r'\d+', temp.notes))
-                        listOfTrucks[(int(truckNum))-1].insertPackage(temp)
+                        listOfTrucks[(int(truckNum))].insertPackage(temp)
                 elif "Delayed" in temp.notes:
                     listOfDelayedPackages.append(temp.id)
                 elif "Wrong address" in temp.notes:
                     fixAddress(temp)
-                    addSpecialPackagesToTrucks(temp)
+                    listOfTrucks[findBestTruck(pck)].insertPackage(temp)
                 elif "delivered with" in temp.notes:
                         specialPackageIDs = (re.findall(r'\d+', temp.notes))
                         specialPackageIDs = [eval(i) for i in specialPackageIDs]
@@ -112,7 +113,7 @@ def checkSpecialNotes():
                         #if a truck number was found for a package then load all packages in the grouping onto that truck
                         if(truckNum!=-1):
                             for p in specialPackageIDs:
-                                if listOfTrucks[truckNum].checkPackagesOnTruck(table.getPackage(p)):
+                                if listOfTrucks[truckNum].checkPackagesOnTruck(p):
                                     None
                                 else:
                                     listOfTrucks[truckNum].insertPackage(table.getPackage(p))   
@@ -120,7 +121,7 @@ def checkSpecialNotes():
                         else:
                             truckNum = 0
                             for p in specialPackageIDs:
-                                if listOfTrucks[truckNum].checkPackagesOnTruck(table.getPackage(p)):
+                                if listOfTrucks[truckNum].checkPackagesOnTruck(p):
                                     None
                                 else:
                                     listOfTrucks[truckNum].insertPackage(table.getPackage(p))    
@@ -148,6 +149,7 @@ def setTruckAvgZip():
             avg = avg / count
             t.zipAvg = avg
 
+
 # ** (initial) fill trucks function **
 # fills all trucks in list of trucks with packages in the hash table 
 # takes into consideration status of the pacakges if delivered, loaded, ready, or not ready 
@@ -163,7 +165,7 @@ def initialFillTrucks():
                 someTruckHasPackage = False
                 #iterate through the list of trucks and check whether or not the package is already loaded
                 for t in listOfTrucks:
-                    if(t.checkPackagesOnTruck(temp)):
+                    if(t.checkPackagesOnTruck(temp.id)):
                         someTruckHasPackage = True
                 # if the package isn't laoded already
                 if(someTruckHasPackage==False):
@@ -187,35 +189,50 @@ def initialFillTrucks():
 def initTrucks(numOfTrucks):
     global packageFilePathName, totalNumOfPackages, table, listOfTrucks
     # create number of trucks passed to function appending each to the list of trucks 
-    for x in range(numOfTrucks):
+    for x in range(0,numOfTrucks):
         listOfTrucks.append(truck(x))
+
+def findBestTruck(p):
+    global listOfTrucks
+    bestTruck = -1
+    maxEmptySpace = -1
+    # Determine the best fit truck that is not full at the hub based on how empty they are
+    for t in listOfTrucks:
+        emptySpace = t.maxPackages - len(t.packageList)
+        if emptySpace > maxEmptySpace and not t.isFull() and t.stopDeliverFlag == False and t.status != 2 and t.currAddress.zip == t.hubAddress.zip and t.currAddress.address == t.hubAddress.address and t.currAddress.city == t.hubAddress.city and t.currAddress.state == t.hubAddress.state:
+            maxEmptySpace = emptySpace
+            bestTruck = t.truckNum
+    if bestTruck == -1:
+        # If there is no truck at the hub, determine the best fit truck that is not full based on how empty they are
+        for t in listOfTrucks:
+            emptySpace = t.maxPackages - len(t.packageList)
+            if t.stopDeliverFlag == False and t.status == 2 and not t.isFull() and emptySpace > maxEmptySpace:
+                maxEmptySpace = emptySpace
+                bestTruck = t.truckNum
+    return bestTruck
 
 def addSpecialPackagesToTrucks(p):
     global listOfTrucks
-    bestTruck = -1
-    bestDistance = float('inf')
-        # Determine the best fit truck at the hub based on average zip code
-    for t in listOfTrucks:
-        if t.currAddress.zip == t.hubAddress.zip and t.currAddress.address == t.hubAddress.address and t.currAddress.city == t.hubAddress.city and t.currAddress.state == t.hubAddress.state:
-            if abs(p.deliveryAddress.zip - t.zipAvg) < bestDistance and not t.isFull():
-                bestDistance = abs(p.deliveryAddress.zip - t.zipAvg)
-                bestTruck = t.truckNum
+    bestTruck = findBestTruck(p)
     if bestTruck != -1:
-        print(f"Package {p.id} is being loaded onto truck {bestTruck + 1} at the hub.")
-        # Insert the package to the best truck
-        listOfTrucks[bestTruck].insertPackage(p)
-        # Update the average zip code for the trucks
-        setTruckAvgZip()
-        if(p.id in listOfDelayedPackages):
-            listOfDelayedPackages.remove(p.id)
-    else:
-        # Determine the best fit truck that is not full based on average zip code
-        for t in listOfTrucks:
-            if not t.isFull() and abs(p.deliveryAddress.zip - t.zipAvg) < bestDistance:
-                bestDistance = abs(p.deliveryAddress.zip - t.zipAvg)
-                bestTruck = t.truckNum
-        if bestTruck != -1:
-            listOfTrucks[bestTruck].pickupPackage(p)
+        if listOfTrucks[bestTruck].currAddress == listOfTrucks[bestTruck].hubAddress and listOfTrucks[bestTruck].locked == False:
+            print(f"Loading packages at hub onto truck {bestTruck}")
+            # Insert the packages to the best truck
+            for pck in listOfDelayedPackages:
+                listOfTrucks[bestTruck].insertPackage(table.getPackage(pck))
+            # Update the average zip code for the trucks
+            setTruckAvgZip()
+            # Remove the packages from the list of delayed packages
+            for pck in list(listOfDelayedPackages):  # Create a copy of the list to iterate over
+                if listOfTrucks[bestTruck].checkPackagesOnTruck(pck):
+                    print(f"Package {pck} loaded onto truck {bestTruck}")
+                    listOfDelayedPackages.remove(pck)
+        else:
+            print(f"Truck {bestTruck} is not at the hub. Picking up the package ", p.id)
+            if(listOfTrucks[bestTruck].locked == True):
+                listOfTrucks[bestTruck].stopDelivering()
+            listOfTrucks[bestTruck].pickupPackage(p, listOfDelayedPackages, table)
+            setTruckAvgZip()
 
 # ** calculate truck order function **
 # calculates that order of the trucks doing deliveries based on the locations of the packages which are delayed
@@ -270,7 +287,7 @@ def checkIfDelayedPackagesReady():
 # ** deliver function **
 #
 def deliver():
-        global trucksHavePackages, listOfTrucks, listOfDeliveryThreads
+        global listOfTrucks, listOfDeliveryThreads
         loop = 1
         #initialize the list of delivery threads
         for n in range(0,len(listOfTrucks)):
@@ -280,7 +297,7 @@ def deliver():
             h.start()
             listOfDeliveryThreads[truckOrder[n]] = h
         #while there are still packages to be delivered keep delivering
-        while(trucksHavePackages):
+        while(programStatus.trucksHavePackages):
             checkIfDelayedPackagesReady()
             pck = None
             for p_id in listOfDelayedPackages:
@@ -288,12 +305,10 @@ def deliver():
                 if pck !=None and pck.status == 0:
                     addSpecialPackagesToTrucks(pck)
             #check if trucks still have packages
-            temp = False
             for t in listOfTrucks:
-                temp = temp or t.hasPackages()
-            trucksHavePackages = temp
+                programStatus.trucksHavePackages = any(not t.isEmpty() for t in listOfTrucks)
             #if trucks have packages make deliveries
-            if(trucksHavePackages):
+            if(programStatus.trucksHavePackages):
                 #set the status of the trucks to drive based on how many drivers are available
                 for d in range(0,driverMaxSize):
                     if(len(truckOrder)>=d+1):
@@ -309,7 +324,7 @@ def deliver():
                 if(loop == 1):
                     h = threading.Thread(target=checkAndSwitchTrucks)
                     h.start()
-                    loop = loop + 1   
+                    loop = loop + 1  
         for t in listOfDeliveryThreads:
             t.join()
 
@@ -328,7 +343,7 @@ def fixAddress(pck):
 # ** main function **
 def checkAndSwitchTrucks():
     global switchFlag
-    while(trucksHavePackages):
+    while(programStatus.trucksHavePackages):
         global listOfTrucks, truckOrder
         # Check each truck for packages with early deadlines
         for t in listOfTrucks:
@@ -348,18 +363,23 @@ def checkAndSwitchTrucks():
                                             break
                 #If there is both a truck that is not driving with deadlines and a truck that is driving without deadlines then switch
                 if(truckOne != None and truckTwo != None):
-                    print("two trucks are good to go")
                     # Update truck order                                                                                                                                                                                                                                                                                                                                                                              `
                     if truckOne.truckNum in truckOrder:
                         idxOne = truckOrder.index(truckOne.truckNum)
                         if truckTwo.truckNum in truckOrder:
                             idxTwo = truckOrder.index(truckTwo.truckNum)
-                            print("Trucks ", truckOne.truckNum, "and ", truckTwo.truckNum,  " are switching")
-                            truckOne.stopDelivering()
-                            truckTwo.stopDelivering()
+                            listTh = []
+                            h = threading.Thread(target=truckOne.stopDelivering())
+                            listTh.append(h)
+                            h.start()
+                            h = threading.Thread(target=truckTwo.stopDelivering())
+                            listTh.append(h)
+                            h.start()
+                            for th in listTh:
+                                th.join()
                             truckOrder[idxOne] = truckTwo.truckNum
                             truckOrder[idxTwo] = truckOne.truckNum
-                            h = threading.Thread(target=waitAndTravel(truckOne, truckTwo))
+                            h = threading.Thread(target=waitAndTravel(listOfTrucks[truckOne.truckNum], listOfTrucks[truckTwo.truckNum]))
                             h.start()
                             h.join()
                             switchFlag = True
@@ -367,32 +387,34 @@ def checkAndSwitchTrucks():
 
 def waitAndTravel(t1, t2):    
     global switchFlag
+    print("Switching trucks", t1.truckNum, "and", t2.truckNum)
     timeFromOnetoTwo = t1.calculateTimeFromTo(t1.currAddress, t2.currAddress)
-    startTime = datetime.datetime.now()
+    startTime = datetime.datetime(timeKeeper.dt.year, timeKeeper.dt.month, timeKeeper.dt.day, timeKeeper.dt.hour, timeKeeper.dt.minute, 0)
     endTime = None
     hours = int(timeFromOnetoTwo % 24)
-    minutes = startTime.minute
+    minutes = int((timeFromOnetoTwo % 1) * 60)
+    minutes += startTime.minute    
     hr = 0
     if minutes >= 60:
         hr = int(minutes / 60)
     minutes %= 60
     hours = (hours + startTime.hour + hr) % 24
     endTime = datetime.datetime(startTime.year, startTime.month, startTime.day, hours, minutes, 0)
-    while(timeKeeper.dt.hour<endTime.hour and timeKeeper.dt.minute<endTime.minute):
+    while(timeKeeper.dt.hour<endTime.hour or timeKeeper.dt.minute<endTime.minute):
         None
-    temp = t1.currAddress
-    t1.currentAddress = t2.currAddress
-    t2.currentAddress = temp
-    t1.status = 1
-    t2.status = 2
-    t2.locked = False
+    t2.currAddress = t1.currAddress
+    t1.status = 2
+    t2.status = 1
+    t1.locked = False
+    t1.stopDeliverFlag = False
+    t2.stopDeliverFlag = False
     switchFlag = False
-    print("Switch complete")
-    
-
+    print("Switch Complete")
+    print("\nTruck ", t1.truckNum  , " is now at ", t1.currAddress.address, t1.currAddress.city, t1.currAddress.state, t1.currAddress.zip)
+    print("\nTruck ", t2.truckNum , " is now at ", t2.currAddress.address, t2.currAddress.city, t2.currAddress.state, t2.currAddress.zip)
+    print("\n)")
 
 def main():
-    global trucksHavePackages, listOf
     #initialize the packages in from the csv file to the hash table
     initPackages()
     #initialized the trucks
@@ -412,8 +434,8 @@ def main():
     thread = threading.Thread(target=timeKeeper.keepTime)
     thread.start()
     deliver()
-    while(trucksHavePackages):
+    while(programStatus.trucksHavePackages):
         None
     print("finished")
-
+    thread.join()
 main()
