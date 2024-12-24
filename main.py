@@ -3,13 +3,11 @@ from package import package # type: ignore
 from hashTable import hashTable # type: ignore
 from truck import truck # type: ignore
 from address import address # type: ignore
-from timeKeeper import timeKeeper #type:ignore
-from programStatus import programStatus #type:ignore
+from StoppableThread import StoppableThread #type:ignore
 import csv, string, re, datetime, threading
 
 
 PYTHONHASHSEED = 1
-
 packageFilePathName = ""
 totalNumOfPackages = 0
 table = hashTable()
@@ -22,6 +20,8 @@ listOfWrongAddressPackages = []
 truckOrder = []
 switchFlag = False
 listOfDeliveryThreads = []
+trucksHavePackages = True
+thread = None
 
 # ** initialize packages function **
 # initializes the list of pacakges from the csv file
@@ -186,11 +186,11 @@ def initialFillTrucks():
                 hasMore = False 
 
 # ** initialize trucks function **
-def initTrucks(numOfTrucks):
+def initTrucks(numOfTrucks, thread):
     global packageFilePathName, totalNumOfPackages, table, listOfTrucks
     # create number of trucks passed to function appending each to the list of trucks 
     for x in range(0,numOfTrucks):
-        listOfTrucks.append(truck(x))
+        listOfTrucks.append(truck(x, thread))
 
 def findBestTruck(p):
     global listOfTrucks
@@ -281,13 +281,13 @@ def checkIfDelayedPackagesReady():
             delay_time = delay_time.replace(year=datetime.datetime.today().year, 
                                             month=datetime.datetime.today().month, 
                                             day=datetime.datetime.today().day).time()
-            if delay_time <= timeKeeper.dt.time():
+            if delay_time <= thread.dt.time():
                 p.status = 0
 
 # ** deliver function **
 #
 def deliver():
-        global listOfTrucks, listOfDeliveryThreads
+        global listOfTrucks, listOfDeliveryThreads, trucksHavePackages
         loop = 1
         #initialize the list of delivery threads
         for n in range(0,len(listOfTrucks)):
@@ -297,7 +297,7 @@ def deliver():
             h.start()
             listOfDeliveryThreads[truckOrder[n]] = h
         #while there are still packages to be delivered keep delivering
-        while(programStatus.trucksHavePackages):
+        while(trucksHavePackages):
             checkIfDelayedPackagesReady()
             pck = None
             for p_id in listOfDelayedPackages:
@@ -306,9 +306,9 @@ def deliver():
                     addSpecialPackagesToTrucks(pck)
             #check if trucks still have packages
             for t in listOfTrucks:
-                programStatus.trucksHavePackages = any(not t.isEmpty() for t in listOfTrucks)
+                trucksHavePackages = any(not t.isEmpty() for t in listOfTrucks)
             #if trucks have packages make deliveries
-            if(programStatus.trucksHavePackages):
+            if(trucksHavePackages):
                 #set the status of the trucks to drive based on how many drivers are available
                 for d in range(0,driverMaxSize):
                     if(len(truckOrder)>=d+1):
@@ -342,8 +342,8 @@ def fixAddress(pck):
             
 # ** main function **
 def checkAndSwitchTrucks():
-    global switchFlag
-    while(programStatus.trucksHavePackages):
+    global switchFlag, trucksHavePackages
+    while(trucksHavePackages):
         global listOfTrucks, truckOrder
         # Check each truck for packages with early deadlines
         for t in listOfTrucks:
@@ -389,7 +389,7 @@ def waitAndTravel(t1, t2):
     global switchFlag
     print("Switching trucks", t1.truckNum, "and", t2.truckNum)
     timeFromOnetoTwo = t1.calculateTimeFromTo(t1.currAddress, t2.currAddress)
-    startTime = datetime.datetime(timeKeeper.dt.year, timeKeeper.dt.month, timeKeeper.dt.day, timeKeeper.dt.hour, timeKeeper.dt.minute, 0)
+    startTime = datetime.datetime(thread.dt.year, thread.dt.month, thread.dt.day, thread.dt.hour, thread.dt.minute, 0)
     endTime = None
     hours = int(timeFromOnetoTwo % 24)
     minutes = int((timeFromOnetoTwo % 1) * 60)
@@ -400,7 +400,7 @@ def waitAndTravel(t1, t2):
     minutes %= 60
     hours = (hours + startTime.hour + hr) % 24
     endTime = datetime.datetime(startTime.year, startTime.month, startTime.day, hours, minutes, 0)
-    while(timeKeeper.dt.hour<endTime.hour or timeKeeper.dt.minute<endTime.minute):
+    while(thread.dt.hour<endTime.hour or thread.dt.minute<endTime.minute):
         None
     t2.currAddress = t1.currAddress
     t1.status = 2
@@ -415,10 +415,13 @@ def waitAndTravel(t1, t2):
     print("\n)")
 
 def main():
+    global trucksHavePackages, thread
+    thread = StoppableThread()
+    thread.start()    
     #initialize the packages in from the csv file to the hash table
     initPackages()
     #initialized the trucks
-    initTrucks(3)
+    initTrucks(3, thread)
     #check the special notes of the pacakges (inserting them if needed in to the correct trucks)
     checkSpecialNotes()
     #set the average truck zip code based on packages already inserted
@@ -431,11 +434,9 @@ def main():
     for t in listOfTrucks:
         t.printPackageList()
     #starts the timer for the day simualting time passage starting at 8:00am ending at 11:59am (simulating delivery for the entire day)
-    thread = threading.Thread(target=timeKeeper.keepTime)
-    thread.start()
     deliver()
-    while(programStatus.trucksHavePackages):
+    while(trucksHavePackages):
         None
     print("finished")
-    thread.join()
+    thread.stop()
 main()

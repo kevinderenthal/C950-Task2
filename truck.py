@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 from typing import Any
 from address import address
 from datetime import datetime
-from timeKeeper import timeKeeper # type: ignore
 import csv, string
 
 # **** truck class ****
@@ -45,11 +44,16 @@ class truck:
     stopDeliverFlag = False
     # ** initialize function for truck **
     # called when creating a truck
-    def __init__(self, num) -> None:
+    th = None
+
+
+
+    def __init__(self, num, thread) -> None:
         # sets the truck number to the number passed in the parameters
         self.truckNum = num
         # creates a new empty priority queue for the truck
         self.packageList = []
+        self.th = thread
 
     # ** get priority function **
     # returns the priority of the package passed in parameters
@@ -220,7 +224,7 @@ class truck:
             if self.stopDeliverFlag == False and self.locked == False and self.status == 2:
                 self.locked = True
                 # record the start time of the delivery
-                self.startTime = timeKeeper.dt
+                self.startTime = self.th.dt
                 # get the package to be delivered from the truck priority queue
                 self.packageToBeDelivered = heapq.heappop(self.packageList)[1]
                 print("truck ", self.truckNum, "is delivering package", self.packageToBeDelivered.id)
@@ -246,7 +250,7 @@ class truck:
                 # keep looping until the current address is equal to the new address
                 while self.status == 2 and self.currAddress != self.packageToBeDelivered.deliveryAddress:
                     # if the current time has reached the ending time of delivery then set the current address to the delivery address as the delivery is completed
-                    if self.status == 2 and timeKeeper.dt.hour >= self.endTime.hour and timeKeeper.dt.minute >= self.endTime.minute:
+                    if self.status == 2 and self.th.dt.hour >= self.endTime.hour and self.th.dt.minute >= self.endTime.minute:
                         self.currAddress = self.packageToBeDelivered.deliveryAddress
                         self.packageToBeDelivered.currentAddress = self.packageToBeDelivered.deliveryAddress
                         print("done")
@@ -262,7 +266,7 @@ class truck:
         if not self.locked or self.stopDeliverFlag == True:
             print("truck number ", self.truckNum, " is picking up package ", package.id)
             self.locked = True
-            self.startTime = timeKeeper.dt
+            self.startTime = self.th.dt
             timeToPickup = self.calculateTimeFromTo(self.currAddress, package.deliveryAddress)
             hours = int(timeToPickup % 24)
             minutes = int((timeToPickup % 1) * 60)
@@ -276,7 +280,7 @@ class truck:
             print("travelling from ", self.currAddress.address, " to ", package.deliveryAddress.address)
             print("start time is ", self.startTime)
             print("end time is ", self.endTime, "\n")
-            while timeKeeper.dt < self.endTime:
+            while self.th.dt < self.endTime:
                 pass
             self.currAddress = self.hubAddress
             self.insertPackage(package)
