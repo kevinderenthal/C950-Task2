@@ -1,15 +1,27 @@
 from datetime import datetime
 from address import address # type: ignore
-# ***** package class *****
-#
-# contains all functions as well as variables for each package
-# all information for each package is derived from the csv or other spreadsheet file imported/used
-#
-# (package status information)
-# - package status of -1 is not loaded and not ready
-# - package status of 0 is not loaded and ready
-# - packaage status of 1 is loaded
-# - package status of 2 is delivered
+""" package class
+    - package class is used to create package objects
+    Functions:
+        - __init__(self, next_node=None)
+        - __lt__(self, otherPackage)
+        - __le__(self, otherPackage)
+        - __gt__(self, otherPackage)
+        - __ge__(self, otherPackage)
+        - __eq__(self, otherPackage)
+        - __ne__(self, otherPackage)
+        - set_next_node(self, next_node)
+        - get_next_node(self)
+        - get_id(self)
+        - get_delivery_address(self)
+        - get_current_address(self)
+        - get_deadline(self)
+        - get_weight(self)
+        - get_notes(self)
+        - get_status(self)
+        - get_truck_num(self)
+        - getAllPackageAttributes(self)
+"""
 
 class package:
     id = -1
@@ -80,3 +92,39 @@ class package:
     def get_next_node(self):
         # returns next node (package or None)
         return self.next_node
+    
+    # ** get id function **
+    def get_id(self):
+        return self.id
+
+    # ** get delivery address function **
+    def get_delivery_address(self):
+        return self.deliveryAddress
+
+    # ** get current address function **
+    def get_current_address(self):
+        return self.currentAddress
+
+    # ** get deadline function **
+    def get_deadline(self):
+        return self.deadline
+
+    # ** get weight function **
+    def get_weight(self):
+        return self.weight
+
+    # ** get notes function **
+    def get_notes(self):
+        return self.notes
+
+    # ** get status function **
+    def get_status(self):
+        return self.status
+
+    # ** get truck number function **
+    def get_truck_num(self):
+        return self.truckNum
+    
+    # ** get package attributes function **
+    def getAllPackageAttributes(self):
+        return [self.id, self.deliveryAddress, self.currentAddress, self.deadline, self.weight, self.notes, self.status, self.truckNum]

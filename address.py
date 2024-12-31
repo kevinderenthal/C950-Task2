@@ -1,9 +1,19 @@
+""" Address class
+    object that holds the address of a package
+    Functions:
+        - update (entire) address function
+        - update address function
+        - update city function
+        - update state function
+        - update zip code function
+"""
 class address:
     address = ""
     city = ""
     state = ""
     zip = -1
 
+    # ** Constructor **
     def __init__(self, a="", c="", s="", z=-1) -> None:
         self.address = a
         self.city = c

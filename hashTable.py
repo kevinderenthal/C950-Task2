@@ -1,6 +1,14 @@
 from package import package # type: ignore
 
-# **** hash table class ****
+""" hashTable class
+    - hashTable class is used to create hash table objects
+    Functions:
+        - __init__(self, initCapacity=30)
+        - insert(self, package)
+        - getPackage(self, packageID)
+        - printTable(self)
+        - getCountOfPackages(self)
+"""
 class hashTable:
 
     # ** initialize function for hash table **
@@ -47,3 +55,13 @@ class hashTable:
                     temp = temp.get_next_node()
                     pck = pck + " , " + str(temp.id)
                 print(pck)
+
+    # ** get count of packages function **
+    # returns the count of how many packages are in the table
+    def getCountOfPackages(self):
+        count = 0
+        for p in self.packages:
+            while p is not None:
+                count += 1
+                p = p.get_next_node()
+        return count

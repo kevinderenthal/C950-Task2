@@ -5,6 +5,7 @@ from typing import Any
 from address import address
 from datetime import datetime
 import csv, string
+from threadClass import * 
 
 # **** truck class ****
 class truck:
@@ -43,28 +44,27 @@ class truck:
     # flag to stop delivering
     stopDeliverFlag = False
     # ** initialize function for truck **
-    # called when creating a truck
-    th = None
 
 
-
-    def __init__(self, num, thread) -> None:
+    # ** initialize function for truck **
+    # initializes the truck with the number passed in the parameters
+    def __init__(self, num) -> None:
         # sets the truck number to the number passed in the parameters
         self.truckNum = num
         # creates a new empty priority queue for the truck
         self.packageList = []
-        self.th = thread
 
     # ** get priority function **
     # returns the priority of the package passed in parameters
     def getPriority(self, pck):
         # Check if the package has a deadline that is not end of day
-        if pck.deadline != datetime(datetime.now().year, datetime.now().month, datetime.now().day, 17, 0, 0):
+        if pck.deadline != datetime(datetime.now().year, datetime.now().month, datetime.today().day, 17, 0, 0):
             # Assign highest priority if the deadline is not end of day
-            priority = 0
+            priority = 10 - max(1, min(9, (datetime(datetime.now().year, datetime.now().month, datetime.today().day, 17, 0, 0) - pck.deadline).total_seconds() // 3600))
         else:
             # Calculate priority based on the distance from the hub address
-            priority = abs(self.hubAddress.zip - pck.deliveryAddress.zip) + 1
+            distance = self.calculateTimeFromTo(self.hubAddress, pck.deliveryAddress) * self.maxSpeed
+            priority = 10 + min(10, max(0, distance // 5))
         return (int(priority))
 
     # ** insert package function **
@@ -80,6 +80,8 @@ class truck:
             # prints error message if the truck is full while insert a package
             print("Truck" + str(self.truckNum) + " cannot fit item with id " + str(p.id))
             return -1
+        # Sort packages with the same priority based on distance from the hub address
+        self.packageList.sort(key=lambda x: (x[0], self.calculateTimeFromTo(self.hubAddress, x[1].deliveryAddress)))
 
     # ** check package on truck function **
     # returns whether or not the package with the given id is inside of the truck's priority queue
@@ -92,15 +94,17 @@ class truck:
 
     # ** is full function **
     # returns whether or not the truck is full
-    def isFull(self):
-        # compares the total number of packages in the priority queue to the maximum allowed packages checking if the queue is full
-        return self.packageCount() >= self.maxPackages
+    def isFull(self, num=0):
+        if (self.packageCount() + num) == self.maxPackages:
+            return True
+        return False
 
     # ** is empty function **
     # returns whether or not the truck is empty
     def isEmpty(self):
         if self.packageCount() == 0:
             return True
+        return False
 
     # ** remove package function **
     # removes the package passed in parameters from the priority queue
@@ -189,7 +193,7 @@ class truck:
                 # if we are at the row already founded grab the data in the cell at the column already found
                 if rowNum == rowFinalNum:
                     try:
-                        dist = float(r[colFinalNum + 1])
+                        dist = float(r[colFinalNum + 1])  # Ensure distance is always positive
                     except Exception as error:
                         None
                 # if the distance data found is not empty get out of the loop and stop searching for the distance
@@ -197,9 +201,12 @@ class truck:
                     break
                 rowNum = rowNum + 1
         hrs = dist / self.maxSpeed
-        return hrs
+        return abs(hrs)
 
+    # ** start delivering function **
+    # sstops the truck from delivering packages
     def stopDelivering(self):
+        print("stop delivering on truck number ", self.truckNum)
         if self.status != 2:
             # Only stop if not currently delivering
             self.status = 0  # Set status to parked
@@ -218,59 +225,64 @@ class truck:
             self.endTime = None
             self.locked = True
 
+    # ** deliver package function **
+    # delivers the package to the address
+
     def deliverPackage(self):
         while True:
             # if the truck isn't locked because it was stopped delivery or currently delivering
             if self.stopDeliverFlag == False and self.locked == False and self.status == 2:
                 self.locked = True
                 # record the start time of the delivery
-                self.startTime = self.th.dt
+                self.startTime = datetime(threadClass.st.dt.year, threadClass.st.dt.month, threadClass.st.dt.day, threadClass.st.dt.hour, threadClass.st.dt.minute, 0)
                 # get the package to be delivered from the truck priority queue
                 self.packageToBeDelivered = heapq.heappop(self.packageList)[1]
                 print("truck ", self.truckNum, "is delivering package", self.packageToBeDelivered.id)
                 # calculate time needed for path to new address
                 timeToDeliver = self.calculateTimeFromTo(self.currAddress, self.packageToBeDelivered.deliveryAddress)
                 # set initial hours and minutes to 0
-                hours = 0
-                minutes = 0
-                # get the hours and minutes from the time previously calculated
+                self.endTime = None
                 hours = int(timeToDeliver % 24)
-                minutes = int((timeToDeliver % 1 * 60))
-                # add them to the current time
-                minutes = minutes + self.startTime.minute
+                minutes = int((timeToDeliver % 1) * 60)
+                minutes = minutes + self.startTime.minute    
                 hr = 0
-                if minutes > 60:
+                if minutes >= 60:
                     hr = int(minutes / 60)
-                minutes = minutes % 60
+                    minutes %= 60
                 hours = (hours + self.startTime.hour + hr) % 24
                 # set the ending time of delivery to the newly calculated total
                 self.endTime = datetime(self.startTime.year, self.startTime.month, self.startTime.day, hours, minutes, 0)
-                print("start time is ", self.startTime)
-                print("end time is ", self.endTime, "\n")
+                print("truck number ", self.truckNum, " start time is ", self.startTime)
+                print("truck number ", self.truckNum, " end time is ", self.endTime, "\n")
+                print("truck status is ", self.status, " for truck number ", self.truckNum)
                 # keep looping until the current address is equal to the new address
                 while self.status == 2 and self.currAddress != self.packageToBeDelivered.deliveryAddress:
                     # if the current time has reached the ending time of delivery then set the current address to the delivery address as the delivery is completed
-                    if self.status == 2 and self.th.dt.hour >= self.endTime.hour and self.th.dt.minute >= self.endTime.minute:
+                    if self.status == 2 and threadClass.st.dt.hour >= self.endTime.hour and threadClass.st.dt.minute >= self.endTime.minute:
                         self.currAddress = self.packageToBeDelivered.deliveryAddress
                         self.packageToBeDelivered.currentAddress = self.packageToBeDelivered.deliveryAddress
                         print("done")
                         self.printPackageList()
                         self.locked = False
+                self.packageToBeDelivered.status = 2
                 if(self.isEmpty()):
                     print("Truck ", self.truckNum, "is empty")
                     self.status = 0
+                    self.locked = True
                     return
 
+    # ** pickup package function **
+    # picks up the package from the address
 
     def pickupPackage(self, package, listOfDelayedPackages, table):
         if not self.locked or self.stopDeliverFlag == True:
             print("truck number ", self.truckNum, " is picking up package ", package.id)
             self.locked = True
-            self.startTime = self.th.dt
+            self.startTime = datetime(threadClass.st.dt.year, threadClass.st.dt.month, threadClass.st.dt.day, threadClass.st.dt.hour, threadClass.st.dt.minute, 0)
             timeToPickup = self.calculateTimeFromTo(self.currAddress, package.deliveryAddress)
             hours = int(timeToPickup % 24)
             minutes = int((timeToPickup % 1) * 60)
-            minutes += self.startTime.minute
+            minutes = minutes + self.startTime.minute
             hr = 0
             if minutes >= 60:
                 hr = int(minutes / 60)
@@ -280,23 +292,39 @@ class truck:
             print("travelling from ", self.currAddress.address, " to ", package.deliveryAddress.address)
             print("start time is ", self.startTime)
             print("end time is ", self.endTime, "\n")
-            while self.th.dt < self.endTime:
+            while threadClass.st.dt < self.endTime:
                 pass
             self.currAddress = self.hubAddress
             self.insertPackage(package)
             listOfDelayedPackages.remove(package.id)
+            # Check the number of trucks that have packages with deadlines earlier than end of day and keep a count for each truck
+            truck_deadline_counts = {}
+            for pck in list(listOfDelayedPackages):
+                package_to_insert = table.getPackage(pck)
+                if package_to_insert.deadline != datetime(datetime.now().year, datetime.now().month, datetime.today().day, 17, 0, 0):
+                    if self.truckNum not in truck_deadline_counts:
+                        truck_deadline_counts[self.truckNum] = 0
+                    truck_deadline_counts[self.truckNum] += 1
+
+            # Determine the highest count of any truck
+            max_deadline_count = max(truck_deadline_counts.values(), default=0)
+
             # Check for more packages at the hub with status 0 and insert them if the truck is not full
             for pck in list(listOfDelayedPackages):
-                if not self.isFull():
+                if not self.isFull() and truck_deadline_counts.get(self.truckNum, 0) < max_deadline_count + 1:
                     package_to_insert = table.getPackage(pck)
                     self.insertPackage(package_to_insert)
                     if self.checkPackagesOnTruck(package_to_insert.id):
                         listOfDelayedPackages.remove(pck)
+                        if package_to_insert.deadline != datetime(datetime.now().year, datetime.now().month, datetime.today().day, 17, 0, 0):
+                            truck_deadline_counts[self.truckNum] += 1
                 else:
-                    print("Truck ", self.truckNum, " is full")
+                    print("Truck ", self.truckNum, " is full or has reached the maximum allowed packages with deadlines")
             self.stopDeliverFlag = False
             self.locked = False
 
+    # ** package count function **
+    # returns the number of packages on the truck
     def packageCount(self):
         countPack = 0
         # iterates the priority queue adding the package id's to the output string and counting the number of packages
